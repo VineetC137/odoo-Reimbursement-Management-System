@@ -404,6 +404,189 @@
   font-size: 1.2rem;
 }
 
+.sidebar-copy {
+  margin: 12px 0 0;
+  color: var(--color-text-muted);
+  line-height: 1.7;
+}
+
+.management-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.95fr) minmax(0, 1.25fr);
+  gap: 22px;
+  margin-bottom: 22px;
+}
+
+.management-card {
+  padding: 22px;
+  border: 1px solid var(--color-border);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: var(--shadow-soft);
+}
+
+.management-card-wide {
+  min-width: 0;
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.section-heading h3 {
+  margin: 4px 0 0;
+  font-family: var(--font-heading);
+  font-size: 1.28rem;
+}
+
+.mini-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(23, 135, 212, 0.14);
+  background: rgba(86, 182, 247, 0.1);
+  color: var(--color-accent-blue);
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.inline-banner {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid transparent;
+  line-height: 1.6;
+}
+
+.inline-banner-success {
+  border-color: rgba(23, 135, 212, 0.14);
+  background: rgba(227, 244, 253, 0.9);
+  color: var(--color-accent-blue);
+}
+
+.inline-banner-danger {
+  border-color: rgba(228, 87, 87, 0.18);
+  background: rgba(254, 236, 236, 0.96);
+  color: var(--color-danger);
+}
+
+.loading-panel {
+  padding: 28px 22px;
+  border: 1px dashed rgba(23, 135, 212, 0.22);
+  border-radius: 20px;
+  background: rgba(247, 251, 255, 0.9);
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.user-card-list {
+  display: grid;
+  gap: 16px;
+}
+
+.user-card {
+  padding: 18px;
+  border: 1px solid rgba(23, 135, 212, 0.12);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 252, 255, 0.96));
+}
+
+.user-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.user-card-header h4 {
+  margin: 0 0 6px;
+  font-size: 1.08rem;
+}
+
+.user-card-header p {
+  margin: 0;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.user-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.user-meta-grid strong {
+  display: block;
+  font-size: 0.98rem;
+}
+
+.meta-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.admin-note {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(247, 251, 255, 0.95);
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.user-actions-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.action-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 92px;
+  padding: 9px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.status-pill-admin {
+  background: rgba(228, 87, 87, 0.12);
+  color: var(--color-danger);
+}
+
+.status-pill-manager {
+  background: rgba(86, 182, 247, 0.14);
+  color: var(--color-accent-blue);
+}
+
+.status-pill-employee {
+  background: rgba(14, 165, 164, 0.12);
+  color: #0f766e;
+}
+
 @keyframes rise-in {
   from {
     opacity: 0;
@@ -428,7 +611,8 @@
 
   .hero-grid,
   .metrics-grid,
-  .next-step-grid {
+  .next-step-grid,
+  .management-grid {
     grid-template-columns: 1fr;
   }
 
@@ -449,6 +633,10 @@
   .badge-stack {
     align-items: flex-start;
   }
+
+  .user-meta-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 720px) {
@@ -468,5 +656,19 @@
 
   .dashboard-main {
     padding: 24px 16px;
+  }
+
+  .section-heading,
+  .user-card-header {
+    flex-direction: column;
+  }
+
+  .action-button-row {
+    flex-direction: column;
+  }
+
+  .action-button-row .ghost-button,
+  .action-button-row .primary-button {
+    width: 100%;
   }
 }
