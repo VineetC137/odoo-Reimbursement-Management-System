@@ -1,55 +1,125 @@
-# Reimbursement Management System
+# Reimbursement Management
 
-A production-grade reimbursement platform that replaces manual expense processing with configurable approval workflows, conditional rule logic, currency conversion, OCR-assisted receipt extraction, and full audit visibility.
+Reimbursement Management is a full-stack system for handling employee expense claims without relying on spreadsheets, email chains, or manual status tracking. The project is designed around configurable approval logic, strong relational modeling, dynamic currency data, and a UI that feels clean and reliable enough for a real internal workflow.
 
-## Problem Statement
-Organizations lose time and accuracy when reimbursements are handled over email and spreadsheets. This system provides:
+This repository now contains both:
 
-- Dynamic multi-level approval flows.
-- Conditional approval rules (percentage, specific approver, or hybrid).
-- Country-aware company setup with base currency auto-selection.
-- OCR-assisted receipt extraction with editable output.
-- End-to-end timeline, audit logs, and role-based dashboards.
+- an initial application scaffold under `apps/api` and `apps/web`
+- a detailed repo kit in `docs/` to guide the actual build, review, and presentation
 
-## Core Principles
-- Database-first architecture and strict relational integrity.
-- Clear module boundaries for long-term maintainability.
-- Strong validation on both client and server.
-- Explainable technical decisions and practical trade-offs.
+## Why This Project Matters
+Manual reimbursement processes usually fail in predictable ways:
+
+- approvals are handled inconsistently across teams
+- there is no clear visibility into who approved what
+- multi-step approvals are difficult to track
+- expenses may be submitted in one currency and reviewed in another
+- admins cannot easily audit or override decisions
+
+The goal of this project is to solve those problems with a database-first, workflow-driven system that the team can explain confidently during evaluation.
+
+## What the Judges Care About
+This repo is organized around the strongest judging criteria:
+
+- database design and relational thinking
+- modular architecture and clear technical choices
+- dynamic data instead of static JSON
+- strong validation and graceful error handling
+- clean, responsive UI
+- visible team contribution through Git history
 
 ## Recommended Stack
-- **Frontend**: React + TypeScript + Vite
-- **Backend**: Node.js + Express
-- **Database**: PostgreSQL
-- **ORM**: Prisma
-- **Validation**: Zod + React Hook Form
-- **Auth**: JWT access + rotating refresh tokens
-- **OCR**: Tesseract service module
+- Frontend: React + Vite + TypeScript
+- Backend: Node.js + Express + TypeScript
+- Database: PostgreSQL
+- ORM: Prisma
+- Validation: schema-driven request validation
+- Authentication: JWT + bcrypt
+- OCR: planned for Phase 2, not a blocker for the core release
 
-## Dynamic Integrations
-- Country/Currency source: `https://restcountries.com/v3.1/all?fields=name,currencies`
-- Exchange rates: `https://api.exchangerate-api.com/v4/latest/{BASE_CURRENCY}`
+## Core Product Scope
 
-Resilience strategy:
-- Persist country/currency and FX data with TTL.
-- Fallback to the last known valid FX rate during provider outages.
-- Queue notifications with retry.
+### Authentication and Company Onboarding
+- first signup creates the company and the initial admin user
+- selected country determines the company base currency
+- country and currency data is fetched dynamically and cached locally
+
+### User and Role Management
+- admin can create employees and managers
+- admin can change roles
+- admin can assign reporting managers
+- access remains scoped to company data
+
+### Expense Submission
+- employees can create draft expenses
+- claims store original amount and original currency
+- the backend also stores normalized company-currency amount
+- employees can view full expense history and status
+
+### Approval Workflow
+- sequential approval flow is supported
+- manager-first approval can be enabled
+- approvers can approve or reject with comments
+- admin can override with audit remarks
+
+### Conditional Approval Rules
+- percentage approval rules
+- specific approver rules
+- hybrid approval rules
+- combination of sequential and conditional logic
+
+## Approval Flow Examples
+
+### Sequential Flow
+- Step 1: Reporting Manager
+- Step 2: Finance Reviewer
+- Step 3: Director
+
+The next step activates only after the current one is completed.
+
+### Percentage Rule
+- five approvers assigned
+- threshold: 60 percent approval required
+
+If three of the five approve, the expense can be finalized unless a stronger rule overrides it.
+
+### Specific Approver Rule
+- CFO marked as decisive approver
+- if CFO approves, the expense is auto-approved
+
+### Hybrid Rule
+- manager-first enabled
+- finance and director steps present
+- final decision rule: 60 percent approval or CFO approval
 
 ## Role Capabilities
-- **Admin**: company/user management, workflow/rule configuration, override approvals with audit reason.
-- **Manager**: approve/reject/escalate, team expense visibility, action comments.
-- **Employee**: submit expenses, upload receipts, track claim timeline.
+- Admin: company setup, user management, approval rule configuration, override actions, audit visibility
+- Manager: approval queue, team expense visibility, approve or reject with comments
+- Employee: submit expenses, upload receipts, track timeline and current status
 
-## UI Theme Tokens
-- `--color-bg`: `#FFFFFF`
-- `--color-primary`: `#38BDF8`
-- `--color-primary-soft`: `#E0F2FE`
-- `--color-danger`: `#EF4444`
-- `--color-text`: `#0F172A`
-- `--color-border`: `#E2E8F0`
+## Dynamic Integrations
+- country and currency mapping: `https://restcountries.com/v3.1/all?fields=name,currencies`
+- exchange rates: `https://api.exchangerate-api.com/v4/latest/{BASE_CURRENCY}`
+
+Required runtime behavior:
+
+- use live data when possible
+- cache results locally in PostgreSQL
+- fall back to last valid cache when external providers fail
+- surface a safe warning instead of breaking the flow
+
+## UI Direction
+The UI should feel like a serious business product rather than a generic dashboard template.
+
+- main colors: white and sky blue
+- red used only for warnings, rejection, and destructive actions
+- clean spacing and intuitive navigation
+- subtle animation only where it improves clarity
+- no emoji-heavy interface
+- no dark neon dashboard styling
 
 ## Repository Structure
-```bash
+```text
 reimbursement-management-system/
   apps/
     api/
@@ -57,35 +127,92 @@ reimbursement-management-system/
       src/
     web/
       src/
-  packages/
-    ui/
-    config/
-    types/
   docs/
-    SYSTEM_DESIGN.md
-    DATABASE_SCHEMA.md
     API_SPEC.md
-    VALIDATION_RULEBOOK.md
-    UI_GUIDELINES.md
+    DATABASE_SCHEMA.md
     GIT_WORKFLOW.md
+    IMPLEMENTATION_BLUEPRINT.md
     PRESENTATION_CHECKLIST.md
+    ROADMAP.md
+    SYSTEM_DESIGN.md
+    UI_GUIDELINES.md
+    VALIDATION_RULEBOOK.md
+    api-spec.md
+    architecture.md
+    database-design.md
+    development-prompt.md
+    git-workflow.md
+    setup-local.md
+    ui-ux-guidelines.md
   .github/
-    pull_request_template.md
     workflows/
   README.md
 ```
 
-## Local Setup (Planned)
-1. Configure PostgreSQL and create `.env` from `.env.example`.
-2. Install dependencies in `apps/api` and `apps/web`.
-3. Run Prisma migrate + seed.
-4. Start API and web apps in parallel.
+## Local Setup Overview
+The implementation is being structured around:
 
-## Delivery Artifacts
-- [System Design](docs/SYSTEM_DESIGN.md)
-- [Database Schema](docs/DATABASE_SCHEMA.md)
-- [API Specification](docs/API_SPEC.md)
-- [Validation Rulebook](docs/VALIDATION_RULEBOOK.md)
-- [UI Guidelines](docs/UI_GUIDELINES.md)
-- [Git Workflow](docs/GIT_WORKFLOW.md)
-- [Presentation Checklist](docs/PRESENTATION_CHECKLIST.md)
+- PostgreSQL for local persistence
+- `apps/api` for the Express backend
+- `apps/web` for the React frontend
+
+Expected environment variables include:
+
+```env
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/reimbursement_management
+JWT_SECRET=replace-with-a-long-random-string
+PORT=4000
+CLIENT_URL=http://localhost:5173
+COUNTRY_CACHE_TTL_HOURS=24
+RATE_CACHE_TTL_MINUTES=60
+UPLOAD_DIR=./uploads
+```
+
+Detailed setup steps are in [setup-local.md](D:/ASSIGNMENTS%20VIIT/SEM%206/Odoo_Reimbursement_management/docs/setup-local.md).
+
+## Current Build Direction
+
+### Phase 1
+- auth and onboarding
+- user and manager mapping
+- expense submission
+- approval rules
+- approval execution engine
+- audit trail
+- responsive UI
+- local cache for country and currency data
+
+### Phase 2
+- OCR receipt parsing
+- auto-filled expense draft fields
+- extraction confidence score and review workflow
+
+OCR is intentionally delayed until the reimbursement and approval flow is solid.
+
+## Detailed Repository Documents
+
+### Primary Detailed Docs
+- [Architecture Notes](D:/ASSIGNMENTS%20VIIT/SEM%206/Odoo_Reimbursement_management/docs/architecture.md)
+- [Database Design](D:/ASSIGNMENTS%20VIIT/SEM%206/Odoo_Reimbursement_management/docs/database-design.md)
+- [API Specification](D:/ASSIGNMENTS%20VIIT/SEM%206/Odoo_Reimbursement_management/docs/api-spec.md)
+- [UI and UX Guidelines](D:/ASSIGNMENTS%20VIIT/SEM%206/Odoo_Reimbursement_management/docs/ui-ux-guidelines.md)
+- [Local Setup Guide](D:/ASSIGNMENTS%20VIIT/SEM%206/Odoo_Reimbursement_management/docs/setup-local.md)
+- [Git Workflow](D:/ASSIGNMENTS%20VIIT/SEM%206/Odoo_Reimbursement_management/docs/git-workflow.md)
+- [Development Prompt](D:/ASSIGNMENTS%20VIIT/SEM%206/Odoo_Reimbursement_management/docs/development-prompt.md)
+
+### Supporting Docs Already in the Repo
+- [System Design](D:/ASSIGNMENTS%20VIIT/SEM%206/Odoo_Reimbursement_management/docs/SYSTEM_DESIGN.md)
+- [Database Schema](D:/ASSIGNMENTS%20VIIT/SEM%206/Odoo_Reimbursement_management/docs/DATABASE_SCHEMA.md)
+- [API Spec Summary](D:/ASSIGNMENTS%20VIIT/SEM%206/Odoo_Reimbursement_management/docs/API_SPEC.md)
+- [Validation Rulebook](D:/ASSIGNMENTS%20VIIT/SEM%206/Odoo_Reimbursement_management/docs/VALIDATION_RULEBOOK.md)
+- [Implementation Blueprint](D:/ASSIGNMENTS%20VIIT/SEM%206/Odoo_Reimbursement_management/docs/IMPLEMENTATION_BLUEPRINT.md)
+- [Roadmap](D:/ASSIGNMENTS%20VIIT/SEM%206/Odoo_Reimbursement_management/docs/ROADMAP.md)
+- [Presentation Checklist](D:/ASSIGNMENTS%20VIIT/SEM%206/Odoo_Reimbursement_management/docs/PRESENTATION_CHECKLIST.md)
+
+## Team
+- Vineet Unde
+- Asad Pathan
+- Shraddha Bhadane
+
+## Final Note
+This project should feel like it was built by a team that understood the domain and made deliberate technical choices. The repo should tell that story clearly through the schema, the API design, the UI decisions, and the commit history on `main`.
