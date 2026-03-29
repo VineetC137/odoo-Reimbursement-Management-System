@@ -327,6 +327,21 @@ model CurrencyRate {
   @@index([companyId, fetchedAt(sort: Desc)])
 }
 
+model CountryCurrencyCache {
+  id             String   @id @default(cuid())
+  countryCode    String   @unique
+  countryName    String
+  currencyCode   String
+  currencyName   String?
+  currencySymbol String?
+  sourceName     String   @default("restcountries")
+  lastSyncedAt   DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([currencyCode])
+}
+
 model Notification {
   id              String             @id @default(cuid())
   companyId       String

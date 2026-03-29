@@ -6,6 +6,7 @@
     "jsx": "react-jsx",
     "moduleResolution": "Bundler",
     "strict": true,
+    "noEmit": true,
     "skipLibCheck": true
   },
   "include": ["src"]
