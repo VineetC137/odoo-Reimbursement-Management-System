@@ -58,6 +58,14 @@ enum NotificationStatus {
   READ
 }
 
+enum OcrStatus {
+  NOT_STARTED
+  PROCESSING
+  COMPLETED
+  FAILED
+  NOT_SUPPORTED
+}
+
 model Company {
   id                 String       @id @default(cuid())
   name               String
@@ -186,15 +194,22 @@ model Expense {
 model ExpenseReceipt {
   id                    String   @id @default(cuid())
   expenseId             String
+  sourceType            String   @default("UPLOAD")
+  storagePath           String?
   fileName              String
   fileUrl               String
   mimeType              String
   fileSizeBytes         Int
+  ocrStatus             OcrStatus @default(NOT_STARTED)
+  ocrErrorMessage       String?
   ocrRawText            String?
   ocrConfidence         Decimal? @db.Decimal(5, 2)
   extractedAmount       Decimal? @db.Decimal(14, 2)
   extractedCurrency     String?
   extractedDate         DateTime?
+  extractedMerchantName String?
+  suggestedDescription  String?
+  suggestedCategoryName String?
   extractionReviewed    Boolean  @default(false)
   uploadedById          String?
   createdAt             DateTime @default(now())

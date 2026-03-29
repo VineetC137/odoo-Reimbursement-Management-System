@@ -35,7 +35,7 @@ This repo is organized around the strongest judging criteria:
 - ORM: Prisma
 - Validation: schema-driven request validation
 - Authentication: JWT + bcrypt
-- OCR: planned for Phase 2, not a blocker for the core release
+- OCR: local receipt OCR for uploaded files with draft-application support
 
 ## Core Product Scope
 
@@ -55,6 +55,13 @@ This repo is organized around the strongest judging criteria:
 - claims store original amount and original currency
 - the backend also stores normalized company-currency amount
 - employees can view full expense history and status
+- employees can upload receipt files to local storage instead of relying only on links
+
+### OCR and Receipt Processing
+- uploaded receipts are stored locally and exposed through the API
+- OCR runs on uploaded image, PDF, and text receipts
+- extracted values can be applied back to draft expenses
+- OCR status, confidence, merchant hints, and suggested category are stored with the receipt
 
 ### Approval Workflow
 - sequential approval flow is supported
@@ -66,6 +73,7 @@ This repo is organized around the strongest judging criteria:
 - in-app notifications show stage changes, approval requests, and final outcomes
 - managers and admins can review aging approvals, rejection history, and queue load
 - reports stay scoped to the current company and role visibility rules
+- CSV export and printable summaries are available from the reports workspace
 
 ### Conditional Approval Rules
 - percentage approval rules
@@ -165,12 +173,15 @@ Expected environment variables include:
 
 ```env
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/reimbursement_management
-JWT_SECRET=replace-with-a-long-random-string
 PORT=4000
 CLIENT_URL=http://localhost:5173
-COUNTRY_CACHE_TTL_HOURS=24
-RATE_CACHE_TTL_MINUTES=60
-UPLOAD_DIR=./uploads
+PUBLIC_API_BASE_URL=http://localhost:4000
+JWT_ACCESS_SECRET=replace-with-a-long-random-string
+JWT_REFRESH_SECRET=replace-with-another-long-random-string
+COUNTRY_CACHE_MAX_AGE_HOURS=24
+CURRENCY_RATE_CACHE_MAX_AGE_HOURS=12
+UPLOAD_DIR=./storage/uploads
+OCR_LANGUAGE=eng
 ```
 
 Detailed setup steps are in [setup-local.md](D:/ASSIGNMENTS%20VIIT/SEM%206/Odoo_Reimbursement_management/docs/setup-local.md).
@@ -181,20 +192,23 @@ Detailed setup steps are in [setup-local.md](D:/ASSIGNMENTS%20VIIT/SEM%206/Odoo_
 - auth and onboarding
 - user and manager mapping
 - expense submission
+- local receipt upload
+- OCR-assisted receipt extraction
 - approval rules
 - approval execution engine
 - in-app notifications
 - manager and admin reporting
+- CSV export and printable summaries
 - audit trail
 - responsive UI
 - local cache for country and currency data
 
 ### Phase 2
-- OCR receipt parsing
-- auto-filled expense draft fields
-- extraction confidence score and review workflow
+- stronger OCR accuracy tuning for lower-quality scans
+- more aggressive duplicate detection and receipt matching
+- richer export formats such as PDF packets and finance handoff bundles
 
-OCR is intentionally delayed until the reimbursement and approval flow is solid.
+The remaining future work is focused on accuracy and presentation improvements, not on missing core workflow pieces.
 
 ## Detailed Repository Documents
 

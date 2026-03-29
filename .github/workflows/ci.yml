@@ -6,16 +6,21 @@ on:
     branches: ["main", "master"]
 
 jobs:
-  lint-and-build:
+  validate-build-and-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20.19.0
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
       - name: Validate repository structure
-        run: |
-          test -f README.md
-          test -f docs/SYSTEM_DESIGN.md
-          test -f apps/api/prisma/schema.prisma
-          test -f apps/web/src/App.tsx
+        run: npm run check:structure
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+      - name: Build workspaces
+        run: npm run build
+      - name: Run automated tests
+        run: npm run test

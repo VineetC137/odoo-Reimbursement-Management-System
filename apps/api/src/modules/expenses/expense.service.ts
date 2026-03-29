@@ -1,8 +1,16 @@
+import { unlink } from "node:fs/promises";
+
 import { ApprovalActionType, ApprovalInstanceStatus, ExpenseStatus, Prisma, UserStatus } from "@prisma/client";
 
 import { AppError } from "../../lib/app-error.js";
 import { prisma } from "../../lib/prisma.js";
+import { resolveReceiptPublicUrl } from "../../lib/storage.js";
 import type { AuthContext } from "../../types/auth.js";
+import {
+  extractReceiptInsightsFromFile,
+  mapReceiptInsightToPersistence,
+  type ReceiptInsightSummary
+} from "../ocr/receipt-ocr.service.js";
 import { getWorkflowRecord } from "../workflows/workflow.service.js";
 import type { WorkflowApproverSummary, WorkflowStageSummary } from "../workflows/workflow.types.js";
 import { resolveExchangeRate } from "./currency-rate.service.js";
@@ -395,6 +403,29 @@ async function resolveSnapshotForExpense(expense: ExpenseRecord): Promise<Approv
   return buildApprovalSnapshot(expense.companyId, expense.employee.id);
 }
 
+function serializeReceipt(receipt: ExpenseRecord["receipts"][number] | undefined) {
+  if (!receipt) {
+    return null;
+  }
+
+  return {
+    id: receipt.id,
+    sourceType: receipt.sourceType,
+    fileName: receipt.fileName,
+    fileUrl: receipt.fileUrl,
+    mimeType: receipt.mimeType,
+    ocrStatus: receipt.ocrStatus,
+    ocrErrorMessage: receipt.ocrErrorMessage,
+    extractedAmount: receipt.extractedAmount?.toString() ?? null,
+    extractedCurrency: receipt.extractedCurrency,
+    extractedDate: receipt.extractedDate?.toISOString() ?? null,
+    extractedMerchantName: receipt.extractedMerchantName,
+    suggestedDescription: receipt.suggestedDescription,
+    suggestedCategoryName: receipt.suggestedCategoryName,
+    ocrConfidence: receipt.ocrConfidence?.toString() ?? null
+  };
+}
+
 async function serializeExpense(expense: ExpenseRecord): Promise<ExpenseSummary> {
   const snapshot = await resolveSnapshotForExpense(expense);
   const currentStage =
@@ -417,13 +448,7 @@ async function serializeExpense(expense: ExpenseRecord): Promise<ExpenseSummary>
     createdAt: expense.createdAt.toISOString(),
     category: formatCategory(expense.category),
     employee: formatActor(expense.employee),
-    receipt: expense.receipts[0]
-      ? {
-          id: expense.receipts[0].id,
-          fileName: expense.receipts[0].fileName,
-          fileUrl: expense.receipts[0].fileUrl
-        }
-      : null,
+    receipt: serializeReceipt(expense.receipts[0]),
     approval: {
       instanceId: expense.approvalInstance?.id ?? null,
       status: expense.approvalInstance?.status ?? null,
@@ -437,17 +462,47 @@ async function serializeExpense(expense: ExpenseRecord): Promise<ExpenseSummary>
   };
 }
 
+async function deleteStoredFiles(paths: Array<string | null | undefined>): Promise<void> {
+  await Promise.all(
+    paths.filter((value): value is string => Boolean(value)).map(async (filePath) => {
+      try {
+        await unlink(filePath);
+      } catch {
+        // Ignore best-effort cleanup failures for replaced local files.
+      }
+    })
+  );
+}
+
+async function clearExpenseReceipts(
+  client: Prisma.TransactionClient,
+  expenseId: string
+): Promise<Array<string | null | undefined>> {
+  const existingReceipts = await client.expenseReceipt.findMany({
+    where: {
+      expenseId
+    },
+    select: {
+      storagePath: true
+    }
+  });
+
+  await client.expenseReceipt.deleteMany({
+    where: {
+      expenseId
+    }
+  });
+
+  return existingReceipts.map((receipt) => receipt.storagePath);
+}
+
 async function syncExpenseReceipt(
   client: Prisma.TransactionClient,
   expenseId: string,
   uploadedById: string,
   receiptUrl: string | null | undefined
 ): Promise<void> {
-  await client.expenseReceipt.deleteMany({
-    where: {
-      expenseId
-    }
-  });
+  await clearExpenseReceipts(client, expenseId);
 
   if (!receiptUrl) {
     return;
@@ -461,11 +516,14 @@ async function syncExpenseReceipt(
   await client.expenseReceipt.create({
     data: {
       expenseId,
+      sourceType: "URL",
       fileName,
       fileUrl: trimmedUrl,
       mimeType: "text/url",
       fileSizeBytes: trimmedUrl.length,
-      uploadedById
+      uploadedById,
+      ocrStatus: "NOT_SUPPORTED",
+      ocrErrorMessage: "OCR is available only for uploaded local receipt files."
     }
   });
 }
@@ -493,6 +551,193 @@ async function createNotifications(
       payload
     }))
   });
+}
+
+async function getSuggestedCategoryId(
+  companyId: string,
+  categoryName: string | null | undefined
+): Promise<string | null> {
+  if (!categoryName) {
+    return null;
+  }
+
+  const category = await prisma.expenseCategory.findFirst({
+    where: {
+      companyId,
+      name: categoryName,
+      isActive: true,
+      deletedAt: null
+    },
+    select: {
+      id: true
+    }
+  });
+
+  return category?.id ?? null;
+}
+
+function ensureUserCanEditReceipt(expense: ExpenseRecord, auth: AuthContext): void {
+  if (auth.roles.includes("ADMIN")) {
+    return;
+  }
+
+  if (expense.employee.id !== auth.userId) {
+    throw new AppError(403, "EXPENSE_ACCESS_DENIED", "Only the expense owner can change this receipt");
+  }
+
+  if (expense.status !== ExpenseStatus.DRAFT) {
+    throw new AppError(409, "EXPENSE_NOT_EDITABLE", "Only draft expenses can accept receipt changes");
+  }
+}
+
+export async function uploadExpenseReceipt(
+  auth: AuthContext,
+  expenseId: string,
+  uploadedFile: Express.Multer.File
+): Promise<{ expense: ExpenseSummary; extraction: ReceiptInsightSummary }> {
+  const expense = await getExpenseById(expenseId, auth.companyId);
+  ensureUserCanEditReceipt(expense, auth);
+
+  const extraction = await extractReceiptInsightsFromFile(uploadedFile.path, uploadedFile.mimetype);
+  let replacedPaths: Array<string | null | undefined> = [];
+
+  try {
+    const updatedExpense = await prisma.$transaction(async (client) => {
+      replacedPaths = await clearExpenseReceipts(client, expense.id);
+
+      await client.expenseReceipt.create({
+        data: {
+          expenseId: expense.id,
+          sourceType: "UPLOAD",
+          storagePath: uploadedFile.path,
+          fileName: uploadedFile.originalname,
+          fileUrl: resolveReceiptPublicUrl(uploadedFile.filename),
+          mimeType: uploadedFile.mimetype,
+          fileSizeBytes: uploadedFile.size,
+          uploadedById: auth.userId,
+          ...mapReceiptInsightToPersistence(extraction)
+        }
+      });
+
+      await client.auditLog.create({
+        data: {
+          companyId: auth.companyId,
+          userId: auth.userId,
+          expenseId: expense.id,
+          entityType: "EXPENSE_RECEIPT",
+          entityId: expense.id,
+          action: "UPLOAD_RECEIPT",
+          newValue: {
+            fileName: uploadedFile.originalname,
+            ocrStatus: extraction.status,
+            suggestedCategoryName: extraction.suggestedCategoryName
+          }
+        }
+      });
+
+      return client.expense.findUniqueOrThrow({
+        where: {
+          id: expense.id
+        },
+        include: expenseInclude
+      });
+    });
+
+    await deleteStoredFiles(replacedPaths);
+
+    return {
+      expense: await serializeExpense(updatedExpense),
+      extraction
+    };
+  } catch (error) {
+    await deleteStoredFiles([uploadedFile.path]);
+    throw error;
+  }
+}
+
+export async function applyReceiptOcrToExpense(auth: AuthContext, expenseId: string): Promise<ExpenseSummary> {
+  const expense = await getExpenseById(expenseId, auth.companyId);
+  ensureUserCanEditReceipt(expense, auth);
+
+  const receipt = expense.receipts[0];
+
+  if (!receipt) {
+    throw new AppError(404, "RECEIPT_NOT_FOUND", "Upload a receipt before applying OCR suggestions");
+  }
+
+  if (!receipt.extractedAmount && !receipt.extractedDate && !receipt.suggestedDescription && !receipt.suggestedCategoryName) {
+    throw new AppError(409, "OCR_NOT_READY", "No OCR-extracted values are available for this receipt");
+  }
+
+  const companyCurrency = await getCompanyBaseCurrency(auth.companyId);
+  const originalCurrency = receipt.extractedCurrency ?? expense.originalCurrency;
+  const amountOriginal = receipt.extractedAmount ?? expense.amountOriginal;
+  const exchangeRate = await resolveExchangeRate(auth.companyId, originalCurrency, companyCurrency);
+  const amountCompanyCurrency = amountOriginal.mul(exchangeRate.rate).toDecimalPlaces(2);
+  const nextExpenseDate = receipt.extractedDate ?? expense.expenseDate;
+  const nextDescription = receipt.suggestedDescription ?? expense.description ?? "Receipt-based expense";
+  const suggestedCategoryId =
+    (await getSuggestedCategoryId(auth.companyId, receipt.suggestedCategoryName)) ?? expense.categoryId;
+  const duplicateFingerprint = buildDuplicateFingerprint(expense.employee.id, {
+    categoryId: suggestedCategoryId,
+    amount: Number(amountOriginal.toFixed(2)),
+    currencyCode: originalCurrency,
+    expenseDate: nextExpenseDate.toISOString(),
+    description: nextDescription
+  });
+
+  const updatedExpense = await prisma.$transaction(async (client) => {
+    await client.expense.update({
+      where: {
+        id: expense.id
+      },
+      data: {
+        categoryId: suggestedCategoryId,
+        amountOriginal,
+        originalCurrency,
+        amountCompanyCurrency,
+        companyCurrency,
+        exchangeRate: exchangeRate.rate,
+        expenseDate: nextExpenseDate,
+        description: nextDescription,
+        duplicateFingerprint
+      }
+    });
+
+    await client.expenseReceipt.update({
+      where: {
+        id: receipt.id
+      },
+      data: {
+        extractionReviewed: true
+      }
+    });
+
+    await client.auditLog.create({
+      data: {
+        companyId: auth.companyId,
+        userId: auth.userId,
+        expenseId: expense.id,
+        entityType: "EXPENSE",
+        entityId: expense.id,
+        action: "APPLY_RECEIPT_OCR",
+        newValue: {
+          originalCurrency,
+          amountOriginal: amountOriginal.toString(),
+          suggestedCategoryId
+        }
+      }
+    });
+
+    return client.expense.findUniqueOrThrow({
+      where: {
+        id: expense.id
+      },
+      include: expenseInclude
+    });
+  });
+
+  return serializeExpense(updatedExpense);
 }
 
 function evaluateApprovalProgress(

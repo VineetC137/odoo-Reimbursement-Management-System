@@ -35,8 +35,19 @@ export type ExpenseSummary = {
   employee: ExpenseActorSummary;
   receipt: {
     id: string;
+    sourceType: string;
     fileName: string;
     fileUrl: string;
+    mimeType: string;
+    ocrStatus: string;
+    ocrErrorMessage: string | null;
+    extractedAmount: string | null;
+    extractedCurrency: string | null;
+    extractedDate: string | null;
+    extractedMerchantName: string | null;
+    suggestedDescription: string | null;
+    suggestedCategoryName: string | null;
+    ocrConfidence: string | null;
   } | null;
   approval: {
     instanceId: string | null;

@@ -1,7 +1,7 @@
 # Local Setup Guide
 
 ## Purpose
-This document describes the intended local development setup for the final implementation. The repo is still documentation-first, but the setup below should be followed once the codebase is scaffolded.
+This document describes the current local development setup for the working implementation.
 
 ## 1. Required Tools
 - Node.js 20+
@@ -50,24 +50,30 @@ Create a `.env` file based on the following structure:
 
 ```env
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/reimbursement_management
-JWT_SECRET=replace-with-a-long-random-string
 PORT=4000
 CLIENT_URL=http://localhost:5173
-COUNTRY_CACHE_TTL_HOURS=24
-RATE_CACHE_TTL_MINUTES=60
-UPLOAD_DIR=./uploads
-MAX_FILE_SIZE_MB=5
+PUBLIC_API_BASE_URL=http://localhost:4000
+JWT_ACCESS_SECRET=replace-with-a-long-random-string
+JWT_REFRESH_SECRET=replace-with-another-long-random-string
+COUNTRY_CACHE_MAX_AGE_HOURS=24
+CURRENCY_RATE_CACHE_MAX_AGE_HOURS=12
+UPLOAD_DIR=./storage/uploads
+OCR_LANGUAGE=eng
+VITE_API_BASE_URL=http://localhost:4000/api/v1
 ```
 
 ### Variable Notes
 - `DATABASE_URL`: used by Prisma and the backend
-- `JWT_SECRET`: used to sign access tokens
+- `JWT_ACCESS_SECRET`: used to sign access tokens
+- `JWT_REFRESH_SECRET`: reserved for longer session handling
 - `PORT`: backend port
 - `CLIENT_URL`: frontend origin for CORS
-- `COUNTRY_CACHE_TTL_HOURS`: refresh interval for country/currency mapping cache
-- `RATE_CACHE_TTL_MINUTES`: refresh interval for exchange-rate cache
+- `PUBLIC_API_BASE_URL`: used when generating receipt URLs and API docs server metadata
+- `COUNTRY_CACHE_MAX_AGE_HOURS`: refresh interval for country/currency mapping cache
+- `CURRENCY_RATE_CACHE_MAX_AGE_HOURS`: refresh interval for exchange-rate cache
 - `UPLOAD_DIR`: local development attachment storage
-- `MAX_FILE_SIZE_MB`: upload guardrail
+- `OCR_LANGUAGE`: Tesseract language code for local receipt OCR
+- `VITE_API_BASE_URL`: frontend API base URL
 
 ## 5. Expected Installation Flow
 
@@ -78,38 +84,44 @@ npm install
 
 ### Prisma Setup
 ```powershell
-npx prisma generate
-npx prisma migrate dev --name init
+npm run prisma:generate
+npm run prisma:migrate -w @reimbursement/api -- --name local_setup
 ```
 
 ### Seed Base Data
-The initial seed should create:
+The current seed creates:
 
 - system roles
+- a demo company
+- admin, manager, finance, and employee accounts
 - default expense categories
-- a small country/currency cache snapshot if desired for first-time development
+- manager mappings
+- a default workflow with hybrid approval rules
+- sample draft, in-review, approved, and rejected expenses
+- notification and audit-log examples
 
 Suggested command:
 
 ```powershell
-npm run seed
+npm run prisma:seed
 ```
 
 ## 6. Running the App Locally
 
 ### Backend
 ```powershell
-npm run dev:server
+npm run dev:api
 ```
 
 ### Frontend
 ```powershell
-npm run dev:client
+npm run dev:web
 ```
 
-### Combined
+### Validation
 ```powershell
-npm run dev
+npm run build
+npm run test
 ```
 
 Expected local URLs:
@@ -139,9 +151,9 @@ Seed data should be minimal and purposeful.
 Recommended seed content:
 
 - roles: `ADMIN`, `MANAGER`, `EMPLOYEE`
-- approval status enums where needed at app level
-- a few categories: travel, food, accommodation, fuel, office supplies, miscellaneous
-- one demo company and users only if the team wants a live demo account set
+- one demo company with realistic users and manager hierarchy
+- categories: travel, food, accommodation, fuel, office supplies, miscellaneous
+- a ready-to-review workflow and sample expenses for presentation
 
 Do not turn seed files into the final source of truth for runtime business data.
 
@@ -150,12 +162,11 @@ For now, local file storage is enough.
 
 Rules:
 
-- keep uploads in a local `uploads/` directory
-- store metadata in the database
+- keep uploads in a local `storage/uploads/` directory
+- store metadata and OCR output in the database
 - validate type and size on upload
 - never trust client-side MIME type alone
-
-OCR support can read from these locally stored files in Phase 2.
+- uploaded files can be processed by local OCR for image, PDF, and text receipts
 
 ## 10. Offline and Failure Scenarios
 The project should still behave acceptably if the internet is unavailable during development or demo.

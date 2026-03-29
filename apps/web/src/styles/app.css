@@ -263,6 +263,10 @@
   line-height: 1.5;
 }
 
+.field .helper-copy {
+  color: var(--color-text-muted);
+}
+
 .currency-preview {
   padding: 18px;
   display: flex;
@@ -473,7 +477,8 @@
 .step-card,
 .notification-item,
 .report-stat-card,
-.report-panel {
+.report-panel,
+.receipt-insight-card {
   padding: 18px;
   border: 1px solid rgba(23, 135, 212, 0.12);
   border-radius: 22px;
@@ -554,6 +559,25 @@
 .timeline-list {
   flex-direction: column;
   margin-top: 10px;
+}
+
+.receipt-insight-card {
+  margin-top: 14px;
+}
+
+.receipt-insight-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.receipt-insight-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 12px;
 }
 
 .timeline-item {
@@ -800,7 +824,8 @@
   .report-grid,
   .field-row,
   .expense-meta-grid,
-  .user-meta-grid {
+  .user-meta-grid,
+  .receipt-insight-grid {
     grid-template-columns: 1fr;
   }
 

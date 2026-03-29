@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import "./styles/tokens.css";
 import "./styles/app.css";
+import { validateExpenseDraft } from "./utils/expense-form";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000/api/v1";
 const SESSION_STORAGE_KEY = "reimbursement-session";
@@ -90,8 +91,19 @@ type ExpenseSummary = {
   employee: ExpenseActorSummary;
   receipt: {
     id: string;
+    sourceType: string;
     fileName: string;
     fileUrl: string;
+    mimeType: string;
+    ocrStatus: string;
+    ocrErrorMessage: string | null;
+    extractedAmount: string | null;
+    extractedCurrency: string | null;
+    extractedDate: string | null;
+    extractedMerchantName: string | null;
+    suggestedDescription: string | null;
+    suggestedCategoryName: string | null;
+    ocrConfidence: string | null;
   } | null;
   approval: {
     instanceId: string | null;
@@ -176,6 +188,22 @@ type AgingReportItem = {
   pendingApprovers: string[];
 };
 
+type ReceiptUploadResult = {
+  expense: ExpenseSummary;
+  extraction: {
+    rawText: string | null;
+    confidence: string | null;
+    amount: string | null;
+    currency: string | null;
+    expenseDate: string | null;
+    merchantName: string | null;
+    suggestedDescription: string | null;
+    suggestedCategoryName: string | null;
+    status: string;
+    errorMessage: string | null;
+  };
+};
+
 type ApiErrorPayload = {
   success?: boolean;
   error?: {
@@ -240,6 +268,7 @@ type WorkflowFormState = {
 
 type RequestJsonOptions = RequestInit & {
   token?: string;
+  headers?: HeadersInit;
 };
 
 const initialSignupForm: SignupFormState = {
@@ -389,10 +418,11 @@ function mapWorkflowToForm(workflow: WorkflowSettingsSummary): WorkflowFormState
 
 async function requestJson<T>(path: string, options: RequestJsonOptions = {}): Promise<ApiSuccessPayload<T>> {
   const { token, headers, ...init } = options;
+  const hasFormDataBody = typeof FormData !== "undefined" && init.body instanceof FormData;
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
-      "Content-Type": "application/json",
+      ...(hasFormDataBody ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(headers ?? {})
     },
@@ -455,6 +485,11 @@ export default function App() {
   const [expenseForm, setExpenseForm] = useState<ExpenseFormState>(createEmptyExpenseForm());
   const [expenseFieldErrors, setExpenseFieldErrors] = useState<Record<string, string>>({});
   const [isSavingExpense, setIsSavingExpense] = useState(false);
+  const [selectedReceiptFile, setSelectedReceiptFile] = useState<File | null>(null);
+  const [receiptUploadMessage, setReceiptUploadMessage] = useState("");
+  const [receiptUploadPending, setReceiptUploadPending] = useState(false);
+  const [ocrApplyPendingExpenseId, setOcrApplyPendingExpenseId] = useState("");
+  const [reportExportPendingType, setReportExportPendingType] = useState("");
   const [submittingExpenseId, setSubmittingExpenseId] = useState("");
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
 
@@ -541,6 +576,7 @@ export default function App() {
     setUserActionError("");
     setExpenseMessage("");
     setExpenseError("");
+    setReceiptUploadMessage("");
     setApprovalMessage("");
     setApprovalError("");
     setWorkflowMessage("");
@@ -758,35 +794,7 @@ export default function App() {
   }
 
   function validateExpenseForm(): Record<string, string> {
-    const errors: Record<string, string> = {};
-
-    if (!expenseForm.categoryId) {
-      errors.categoryId = "Select a category";
-    }
-
-    const parsedAmount = Number(expenseForm.amount);
-
-    if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
-      errors.amount = "Amount should be greater than zero";
-    }
-
-    if (!/^[A-Za-z]{3}$/.test(expenseForm.currencyCode)) {
-      errors.currencyCode = "Use a valid 3-letter currency code";
-    }
-
-    if (!expenseForm.expenseDate) {
-      errors.expenseDate = "Select the expense date";
-    }
-
-    if (expenseForm.description.trim().length < 3) {
-      errors.description = "Description should be at least 3 characters";
-    }
-
-    if (expenseForm.receiptUrl.trim() && !/^https?:\/\/.+/i.test(expenseForm.receiptUrl.trim())) {
-      errors.receiptUrl = "Receipt link should be a valid URL";
-    }
-
-    return errors;
+    return validateExpenseDraft(expenseForm);
   }
 
   function validateWorkflowForm(): Record<string, string> {
@@ -985,6 +993,47 @@ export default function App() {
     }
   }
 
+  function handleReceiptFileChange(event: ChangeEvent<HTMLInputElement>): void {
+    setSelectedReceiptFile(event.target.files?.[0] ?? null);
+    setReceiptUploadMessage("");
+    setExpenseError("");
+  }
+
+  async function uploadReceiptForExpense(expenseId: string): Promise<ExpenseSummary | null> {
+    if (!session || !selectedReceiptFile) {
+      return null;
+    }
+
+    setReceiptUploadPending(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("receipt", selectedReceiptFile);
+
+      const response = await requestJson<ReceiptUploadResult>(`/expenses/${expenseId}/receipt`, {
+        method: "POST",
+        token: session.accessToken,
+        body: formData
+      });
+      const { extraction } = response.data;
+
+      if (extraction.status === "COMPLETED") {
+        setReceiptUploadMessage(
+          `Receipt uploaded. OCR found ${extraction.amount ? `${extraction.currency ?? session.company.baseCurrency} ${extraction.amount}` : "expense values"}${extraction.merchantName ? ` from ${extraction.merchantName}` : ""}.`
+        );
+      } else if (extraction.status === "NOT_SUPPORTED") {
+        setReceiptUploadMessage(extraction.errorMessage ?? "Receipt uploaded, but OCR is not supported for this file.");
+      } else {
+        setReceiptUploadMessage(extraction.errorMessage ?? "Receipt uploaded, but OCR could not extract enough text.");
+      }
+
+      setSelectedReceiptFile(null);
+      return response.data.expense;
+    } finally {
+      setReceiptUploadPending(false);
+    }
+  }
+
   async function handleExpenseSave(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
 
@@ -996,6 +1045,7 @@ export default function App() {
     setExpenseFieldErrors(validationErrors);
     setExpenseError("");
     setExpenseMessage("");
+    setReceiptUploadMessage("");
 
     if (Object.keys(validationErrors).length > 0) {
       return;
@@ -1009,27 +1059,39 @@ export default function App() {
         amount: Number(expenseForm.amount),
         receiptUrl: expenseForm.receiptUrl.trim() || null
       };
+      let savedExpense: ExpenseSummary;
 
       if (editingExpenseId) {
-        await requestJson<ExpenseSummary>(`/expenses/${editingExpenseId}`, {
+        const response = await requestJson<ExpenseSummary>(`/expenses/${editingExpenseId}`, {
           method: "PATCH",
           token: session.accessToken,
           body: JSON.stringify(payload)
         });
+        savedExpense = response.data;
 
         setExpenseMessage("Expense draft updated successfully.");
       } else {
-        await requestJson<ExpenseSummary>("/expenses", {
+        const response = await requestJson<ExpenseSummary>("/expenses", {
           method: "POST",
           token: session.accessToken,
           body: JSON.stringify(payload)
         });
+        savedExpense = response.data;
 
         setExpenseMessage("Expense draft created successfully.");
       }
 
+      if (selectedReceiptFile) {
+        const uploadedExpense = await uploadReceiptForExpense(savedExpense.id);
+
+        if (uploadedExpense) {
+          savedExpense = uploadedExpense;
+        }
+      }
+
       setExpenseForm(createEmptyExpenseForm(session.company.baseCurrency));
       setEditingExpenseId(null);
+      setSelectedReceiptFile(null);
       setExpenseFieldErrors({});
       await loadWorkspaceData(session);
     } catch (error) {
@@ -1044,14 +1106,16 @@ export default function App() {
     setEditingExpenseId(expense.id);
     setExpenseMessage("");
     setExpenseError("");
+    setReceiptUploadMessage("");
     setExpenseFieldErrors({});
+    setSelectedReceiptFile(null);
     setExpenseForm({
       categoryId: expense.category.id,
       amount: expense.amountOriginal,
       currencyCode: expense.originalCurrency,
       expenseDate: expense.expenseDate.slice(0, 10),
       description: expense.description ?? "",
-      receiptUrl: expense.receipt?.fileUrl ?? ""
+      receiptUrl: expense.receipt?.sourceType === "URL" ? expense.receipt.fileUrl : ""
     });
   }
 
@@ -1060,6 +1124,8 @@ export default function App() {
     setExpenseFieldErrors({});
     setExpenseError("");
     setExpenseMessage("");
+    setReceiptUploadMessage("");
+    setSelectedReceiptFile(null);
     setExpenseForm(createEmptyExpenseForm(session?.company.baseCurrency ?? ""));
   }
 
@@ -1176,6 +1242,69 @@ export default function App() {
     }
   }
 
+  async function handleApplyReceiptOcr(expenseId: string): Promise<void> {
+    if (!session) {
+      return;
+    }
+
+    setOcrApplyPendingExpenseId(expenseId);
+    setExpenseError("");
+    setExpenseMessage("");
+    setReceiptUploadMessage("");
+
+    try {
+      await requestJson<ExpenseSummary>(`/expenses/${expenseId}/receipt/apply-ocr`, {
+        method: "POST",
+        token: session.accessToken
+      });
+
+      setExpenseMessage("OCR suggestions applied to the draft expense.");
+      await loadWorkspaceData(session);
+    } catch (error) {
+      setExpenseError(error instanceof Error ? error.message : "Unable to apply OCR values");
+    } finally {
+      setOcrApplyPendingExpenseId("");
+    }
+  }
+
+  async function handleReportExport(type: "dashboard" | "pending-by-approver" | "rejections" | "aging"): Promise<void> {
+    if (!session) {
+      return;
+    }
+
+    setReportExportPendingType(type);
+    setReportsError("");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/reports/export?type=${encodeURIComponent(type)}`, {
+        headers: {
+          Authorization: `Bearer ${session.accessToken}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error("Unable to export report");
+      }
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      const disposition = response.headers.get("Content-Disposition");
+      const fileNameMatch = disposition?.match(/filename="?([^"]+)"?/i);
+
+      anchor.href = downloadUrl;
+      anchor.download = fileNameMatch?.[1] ?? `${type}.csv`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+      setReportsError(error instanceof Error ? error.message : "Unable to export report");
+    } finally {
+      setReportExportPendingType("");
+    }
+  }
+
   async function handleNotificationRead(notificationId: string): Promise<void> {
     if (!session) {
       return;
@@ -1253,6 +1382,7 @@ export default function App() {
     setAgingReport([]);
     clearWorkspaceMessages();
     setExpenseForm(createEmptyExpenseForm());
+    setSelectedReceiptFile(null);
     setEditingExpenseId(null);
   }
 
@@ -1518,14 +1648,22 @@ export default function App() {
                   {expenseFieldErrors.description ? <small>{expenseFieldErrors.description}</small> : null}
                 </label>
 
-                <label className="field">
-                  <span>Receipt link (optional)</span>
-                  <input value={expenseForm.receiptUrl} onChange={(event) => setExpenseForm((current) => ({ ...current, receiptUrl: event.target.value }))} placeholder="https://..." />
-                  {expenseFieldErrors.receiptUrl ? <small>{expenseFieldErrors.receiptUrl}</small> : null}
-                </label>
+                <div className="field-row">
+                  <label className="field">
+                    <span>Receipt upload</span>
+                    <input type="file" accept=".png,.jpg,.jpeg,.webp,.pdf,.txt" onChange={handleReceiptFileChange} />
+                    <small className="helper-copy">{selectedReceiptFile ? `${selectedReceiptFile.name} selected for upload and OCR.` : "Upload an image, PDF, or TXT receipt for local storage and OCR extraction."}</small>
+                  </label>
+                  <label className="field">
+                    <span>Receipt link fallback (optional)</span>
+                    <input value={expenseForm.receiptUrl} onChange={(event) => setExpenseForm((current) => ({ ...current, receiptUrl: event.target.value }))} placeholder="https://..." />
+                    {expenseFieldErrors.receiptUrl ? <small>{expenseFieldErrors.receiptUrl}</small> : <small className="helper-copy">Use this only when you do not have a local receipt file ready.</small>}
+                  </label>
+                </div>
+                {receiptUploadMessage ? <SectionBanner message={receiptUploadMessage} tone="success" /> : null}
 
                 <div className="action-button-row">
-                  <button className="primary-button" type="submit" disabled={isSavingExpense}>{isSavingExpense ? "Saving draft..." : editingExpenseId ? "Update draft" : "Save draft"}</button>
+                  <button className="primary-button" type="submit" disabled={isSavingExpense || receiptUploadPending}>{isSavingExpense || receiptUploadPending ? "Saving draft..." : editingExpenseId ? "Update draft" : "Save draft"}</button>
                   {editingExpenseId ? <button className="ghost-button" type="button" onClick={handleExpenseReset}>Cancel edit</button> : null}
                 </div>
               </form>
@@ -1566,6 +1704,26 @@ export default function App() {
                         <div><span className="meta-label">Receipt</span><strong>{expense.receipt ? <a href={expense.receipt.fileUrl} target="_blank" rel="noreferrer">Open receipt</a> : "Not attached"}</strong></div>
                       </div>
 
+                      {expense.receipt ? (
+                        <div className="receipt-insight-card">
+                          <div className="receipt-insight-header">
+                            <strong>Receipt OCR</strong>
+                            <span className="mini-chip">{expense.receipt.ocrStatus.replaceAll("_", " ")}</span>
+                          </div>
+                          <p className="expense-description">
+                            {expense.receipt.extractedMerchantName ?? expense.receipt.fileName}
+                            <span className="dot-divider">|</span>
+                            {expense.receipt.mimeType}
+                          </p>
+                          <div className="receipt-insight-grid">
+                            <div><span className="meta-label">Extracted amount</span><strong>{expense.receipt.extractedAmount ? formatCurrency(expense.receipt.extractedAmount, expense.receipt.extractedCurrency ?? expense.originalCurrency) : "Not found"}</strong></div>
+                            <div><span className="meta-label">Extracted date</span><strong>{expense.receipt.extractedDate ? formatDate(expense.receipt.extractedDate) : "Not found"}</strong></div>
+                            <div><span className="meta-label">Suggested category</span><strong>{expense.receipt.suggestedCategoryName ?? "Not found"}</strong></div>
+                          </div>
+                          {expense.receipt.ocrErrorMessage ? <p className="expense-description">{expense.receipt.ocrErrorMessage}</p> : null}
+                        </div>
+                      ) : null}
+
                       {expense.approval.actions.length > 0 ? (
                         <div className="timeline-block">
                           <span className="meta-label">Approval timeline</span>
@@ -1584,6 +1742,11 @@ export default function App() {
                       {expense.status === "DRAFT" && expense.employee.id === session.user.id ? (
                         <div className="action-button-row">
                           <button className="ghost-button" type="button" onClick={() => handleExpenseEditStart(expense)}>Edit draft</button>
+                          {expense.receipt && (expense.receipt.extractedAmount || expense.receipt.extractedDate || expense.receipt.suggestedDescription || expense.receipt.suggestedCategoryName) ? (
+                            <button className="ghost-button" type="button" disabled={ocrApplyPendingExpenseId === expense.id} onClick={() => void handleApplyReceiptOcr(expense.id)}>
+                              {ocrApplyPendingExpenseId === expense.id ? "Applying OCR..." : "Apply OCR to draft"}
+                            </button>
+                          ) : null}
                           <button className="primary-button" type="button" disabled={submittingExpenseId === expense.id} onClick={() => void handleExpenseSubmit(expense.id)}>{submittingExpenseId === expense.id ? "Submitting..." : "Submit for approval"}</button>
                         </div>
                       ) : null}
@@ -1711,7 +1874,24 @@ export default function App() {
             <section className="workspace-card" id="reports">
               <div className="section-heading">
                 <div><p className="eyebrow">Reports</p><h3>Operational reporting for review teams</h3></div>
-                <span className="mini-chip">{reportsLoading ? "Refreshing..." : "Live company snapshot"}</span>
+                <div className="section-heading-actions">
+                  <span className="mini-chip">{reportsLoading ? "Refreshing..." : "Live company snapshot"}</span>
+                  <button className="ghost-button" type="button" onClick={() => window.print()}>
+                    Print summary
+                  </button>
+                  <button className="ghost-button" type="button" disabled={reportExportPendingType === "dashboard"} onClick={() => void handleReportExport("dashboard")}>
+                    {reportExportPendingType === "dashboard" ? "Exporting..." : "Export dashboard CSV"}
+                  </button>
+                  <button className="ghost-button" type="button" disabled={reportExportPendingType === "aging"} onClick={() => void handleReportExport("aging")}>
+                    {reportExportPendingType === "aging" ? "Exporting..." : "Export aging CSV"}
+                  </button>
+                  <button className="ghost-button" type="button" disabled={reportExportPendingType === "pending-by-approver"} onClick={() => void handleReportExport("pending-by-approver")}>
+                    {reportExportPendingType === "pending-by-approver" ? "Exporting..." : "Export queue CSV"}
+                  </button>
+                  <button className="ghost-button" type="button" disabled={reportExportPendingType === "rejections"} onClick={() => void handleReportExport("rejections")}>
+                    {reportExportPendingType === "rejections" ? "Exporting..." : "Export rejections CSV"}
+                  </button>
+                </div>
               </div>
               {reportsError ? <SectionBanner message={reportsError} tone="danger" /> : null}
 

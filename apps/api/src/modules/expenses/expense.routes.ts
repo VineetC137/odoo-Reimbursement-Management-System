@@ -5,8 +5,10 @@ import { asyncHandler } from "../../lib/async-handler.js";
 import { AppError } from "../../lib/app-error.js";
 import { requireAuth } from "../../middleware/require-auth.js";
 import { requireRole } from "../../middleware/require-role.js";
+import { receiptUploadMiddleware } from "../../middleware/upload-receipt.js";
 import {
   actOnExpense,
+  applyReceiptOcrToExpense,
   createExpense,
   getExpenseDetail,
   listApprovalQueue,
@@ -14,6 +16,7 @@ import {
   listExpenses,
   overrideExpense,
   submitExpense,
+  uploadExpenseReceipt,
   updateExpense
 } from "./expense.service.js";
 import { approvalActionSchema, createExpenseSchema, overrideExpenseSchema, updateExpenseSchema } from "./expense.schema.js";
@@ -147,6 +150,47 @@ expenseRouter.patch(
     res.json({
       success: true,
       message: "Expense draft updated successfully",
+      data: expense
+    });
+  })
+);
+
+expenseRouter.post(
+  "/:expenseId/receipt",
+  receiptUploadMiddleware.single("receipt"),
+  asyncHandler(async (req, res) => {
+    if (!req.auth) {
+      throw new AppError(401, "AUTH_REQUIRED", "Authorization token is required");
+    }
+
+    if (!req.file) {
+      throw new AppError(400, "RECEIPT_REQUIRED", "Upload a receipt file before continuing");
+    }
+
+    const expenseId = getRouteParam(req.params.expenseId, "expenseId");
+    const result = await uploadExpenseReceipt(req.auth, expenseId, req.file);
+
+    res.status(201).json({
+      success: true,
+      message: "Receipt uploaded and OCR processed successfully",
+      data: result
+    });
+  })
+);
+
+expenseRouter.post(
+  "/:expenseId/receipt/apply-ocr",
+  asyncHandler(async (req, res) => {
+    if (!req.auth) {
+      throw new AppError(401, "AUTH_REQUIRED", "Authorization token is required");
+    }
+
+    const expenseId = getRouteParam(req.params.expenseId, "expenseId");
+    const expense = await applyReceiptOcrToExpense(req.auth, expenseId);
+
+    res.json({
+      success: true,
+      message: "OCR values applied to the expense draft",
       data: expense
     });
   })
