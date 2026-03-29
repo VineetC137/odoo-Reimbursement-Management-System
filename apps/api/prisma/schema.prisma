@@ -280,6 +280,7 @@ model ExpenseApprovalInstance {
   workflowId        String
   currentStepOrder  Int                      @default(1)
   status            ApprovalInstanceStatus   @default(PENDING)
+  workflowSnapshot  Json?
   startedAt         DateTime                 @default(now())
   completedAt       DateTime?
   createdAt         DateTime                 @default(now())

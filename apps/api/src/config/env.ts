@@ -11,5 +11,8 @@ export const env = {
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET ?? "dev-refresh-secret",
   restCountriesUrl:
     process.env.REST_COUNTRIES_URL ?? "https://restcountries.com/v3.1/all?fields=name,currencies,cca2",
-  countryCacheMaxAgeHours: Number(process.env.COUNTRY_CACHE_MAX_AGE_HOURS ?? 24)
+  countryCacheMaxAgeHours: Number(process.env.COUNTRY_CACHE_MAX_AGE_HOURS ?? 24),
+  exchangeRateApiUrlTemplate:
+    process.env.EXCHANGE_RATE_API_URL_TEMPLATE ?? "https://api.exchangerate-api.com/v4/latest/{BASE_CURRENCY}",
+  currencyRateCacheMaxAgeHours: Number(process.env.CURRENCY_RATE_CACHE_MAX_AGE_HOURS ?? 12)
 };

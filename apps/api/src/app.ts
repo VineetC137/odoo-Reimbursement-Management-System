@@ -7,8 +7,10 @@ import { env } from "./config/env.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { notFoundHandler } from "./middleware/not-found.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
+import { expenseRouter } from "./modules/expenses/expense.routes.js";
 import { metadataRouter } from "./modules/metadata/metadata.routes.js";
 import { usersRouter } from "./modules/users/user.routes.js";
+import { workflowRouter } from "./modules/workflows/workflow.routes.js";
 
 const app = express();
 
@@ -29,6 +31,8 @@ app.get("/health", (_req, res) => {
 app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/metadata", metadataRouter);
 app.use("/api/v1/users", usersRouter);
+app.use("/api/v1/expenses", expenseRouter);
+app.use("/api/v1/workflows", workflowRouter);
 
 app.get("/api/v1/docs", (_req, res) => {
   res.json({
